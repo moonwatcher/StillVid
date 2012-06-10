@@ -107,7 +107,7 @@ class CameraScraper(object):
     
     @property
     def name(self):
-        self.config['name']
+        return self.config['name']
     
     
     @property
