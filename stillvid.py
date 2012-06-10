@@ -268,7 +268,8 @@ class CameraScraper(object):
         for frame in self.node['frame']:
             if frame['timestamp'] > query['begin'] and frame['timestamp'] < query['end']:
                 query['batch'].append(frame)
-        if batch:
+                
+        if query['batch']:
             self.log.info('Pack %d frames in %s from %s to %s for %s', len(query['batch']), str(query['duration']), query['begin'].isoformat(), query['end'].isoformat(), self.name)
             
             # sort the frames in the batch by timestamp
