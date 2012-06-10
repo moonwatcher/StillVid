@@ -7,6 +7,7 @@ import re
 import logging
 import json
 import math
+import hashlib
 from StringIO import StringIO
 from datetime import datetime
 from datetime import timedelta
@@ -57,6 +58,9 @@ class StillVidScraper(object):
                     else:
                         # Start a scraper for each camera config
                         self.camera = {}
+                        for k,v in self.config['profile'].iteritems():
+                            v['name'] = k
+                            
                         for k,v in self.config['camera'].iteritems():
                             v['name'] = k
                             self.camera[k] = CameraScraper(self, v)
@@ -304,8 +308,9 @@ class CameraScraper(object):
                 proc.communicate()
                 
                 # run handbrake to compress the stream
-                if self.varify_directory(self.config['location']['product directory']):
-                    product = '{0}/{1}.m4v'.format(self.config['location']['product directory'], query['name'])
+                directory = os.path.join(self.config['location']['product directory'], self.profile['name'])
+                if self.varify_directory(directory):
+                    product = '{0}/{1}.m4v'.format(directory, query['name'])
                     self.log.debug('Compress video for %s to %s', self.name, product)
                     command = [ 'HandBrakeCLI' ]
                     for k,v in self.profile['transcode'].iteritems():
@@ -347,6 +352,7 @@ class CameraScraper(object):
                 pass
     
     
+
 
 def default_json_handler(o):
     result = None
