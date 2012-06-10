@@ -279,7 +279,7 @@ class CameraScraper(object):
                 
                 # Copy selected frames to temp folder with sequential numbers
                 i = 1
-                pad = int(math.ceil(math.log(len(batch), 10)))
+                pad = int(math.ceil(math.log(len(query['batch']), 10)))
                 for frame in query['batch']:
                     command = [
                         'cp',
