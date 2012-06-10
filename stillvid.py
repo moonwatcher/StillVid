@@ -392,7 +392,7 @@ def decode_cli():
         help='Pack jpeg frames to stream',
         description='TIMESTAMP is given as YYYY-MM-DD HH:MM:SS, DURATION is given as {H}h{M}m{S}s or any subset, i.e. 4h34m'
     )
-    c['pack'].add_argument('-p', '--profile', dest='profile', default='default',        help='Video encoder profile [default: %(default)s]')
+    c['pack'].add_argument('-p', '--profile', dest='profile', default='high',        help='Video encoder profile [default: %(default)s]')
     c['pack'].add_argument('-t', '--from',        metavar='TIMESTAMP', dest='from timestamp',       help='Start timestamp')
     c['pack'].add_argument('-T', '--to',          metavar='TIMESTAMP', dest='to timestamp',         help='End timestamp')
     c['pack'].add_argument('-L', '--length',      metavar='DURATION', default='180m',   dest='timestamp window', help='Max window size in seconds [default: %(default)s]')

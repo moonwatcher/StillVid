@@ -1,18 +1,19 @@
 {
     "profile":{
-        "default":{
+        "small":{
             "pack":{
                 "frame per second":8,
                 "codec":"huffyuv"
             },
             "transcode":{
                 "--loose-anamorphic":null,
-                "--quality":"20",
+                "--quality":"22",
                 "--encoder":"x264",
-                "--encopts":"mixed-refs=1:ref=3:bframes=3:me=umh:b-adapt=2:trellis=0:b-pyramid=none:subme=9:vbv-maxrate=5500:vbv-bufsize=5500:cabac=1"
+                "--encopts":"mixed-refs=1:ref=3:bframes=3:me=umh:b-adapt=2:trellis=0:b-pyramid=none:subme=9:vbv-maxrate=5500:vbv-bufsize=5500:cabac=1",
+                "--maxWidth":"320"
             }
         },
-        "hourly":{
+        "medium":{
             "pack":{
                 "frame per second":8,
                 "codec":"huffyuv"
@@ -25,7 +26,7 @@
                 "--maxWidth":"480"
             }
         },
-        "daily":{
+        "high":{
             "pack":{
                 "frame per second":8,
                 "codec":"huffyuv"
@@ -48,7 +49,7 @@
                 "database":"/home/nixon/camera/db/db.json"
             },
             "default":{
-                "profile":"default"
+                "profile":"high"
             }
         }
     }
