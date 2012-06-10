@@ -13,7 +13,6 @@ from datetime import timedelta
 from argparse import ArgumentParser
 from subprocess import Popen, PIPE
 
-HANDBRAKE = '/opt/local/bin/HandBrakeCLI'
 log_levels = {
     'debug': logging.DEBUG,
     'info': logging.INFO,
@@ -30,82 +29,18 @@ expression = {
         'pattern':re.compile('(?:(?P<hours>[0-9]+)h)?(?:(?P<minutes>[0-9]+)m)?(?:(?P<seconds>[0-9]+)s)?'),
     }
 }
-config = {
-    'profile':{
-        'default':{
-            'pack':{
-                'frame per second':8,
-                'codec':'huffyuv',
-            },
-            'transcode':{
-                '--loose-anamorphic':None,
-                '--quality':'20',
-                '--encoder':'x264',
-                '--encopts':'mixed-refs=1:ref=3:bframes=3:me=umh:b-adapt=2:trellis=0:b-pyramid=none:subme=9:vbv-maxrate=5500:vbv-bufsize=5500:cabac=1',
-            },
-        },
-        'hourly':{
-            'pack':{
-                'frame per second':8,
-                'codec':'huffyuv',
-            },
-            'transcode':{
-                '--loose-anamorphic':None,
-                '--quality':'20',
-                '--encoder':'x264',
-                '--encopts':'mixed-refs=1:ref=3:bframes=3:me=umh:b-adapt=2:trellis=0:b-pyramid=none:subme=9:vbv-maxrate=5500:vbv-bufsize=5500:cabac=1',
-                '--maxWidth':'480',
-            },
-        },
-        'daily':{
-            'pack':{
-                'frame per second':8,
-                'codec':'huffyuv',
-            },
-            'transcode':{
-                '--loose-anamorphic':None,
-                '--quality':'18',
-                '--encoder':'x264',
-                '--encopts':'mixed-refs=1:ref=3:bframes=3:me=umh:b-adapt=2:trellis=0:b-pyramid=none:subme=9:vbv-maxrate=5500:vbv-bufsize=5500:cabac=1',
-            },
-        },
-    },
-    'camera':{
-        'nixon':{
-            'location':{
-                'watch directory':'/home/nixon/camera/watch',
-                'buffer directory':'/home/nixon/camera/buffer',
-                'temp directory':'/home/nixon/camera/temp',
-                'product directory':'/media/purple/camera/product',
-                'json':'/home/nixon/camera/db/db.json',
-            },
-            'default':{
-                'profile':'default',
-            },
-        }
-    }
-}
 
-class SurveyScraper(object):
-    def __init__(self, env, config):
+class StillVidScraper(object):
+    def __init__(self, env):
         self.log = logging.getLogger('scraper')
         self.env = env
-        self.node = None
-        self.config = config
-        self.volatile = False
-    
-    @property
-    def profile(self):
-         return config['profile'][self.env['profile']]
-    
-    @property
-    def json(self):
-         return json.dumps(self.node, ensure_ascii=False, sort_keys=True, indent=4,  default=default_json_handler).encode('utf-8')
-    
-    def load(self):
-        if 'json' in self.config['location']:
-            if os.path.exists(self.config['location']['json']):
-                path = os.path.abspath(self.config['location']['json'])
+        self.config = None
+        self.camera = None
+        
+        # load the JSON config file
+        if self.env['conf']:
+            path = os.path.realpath(os.path.expanduser(os.path.expandvars(self.env['conf'])))
+            if os.path.exists(path):
                 try:
                     fnode = open(path, 'r')
                     stream = StringIO(fnode.read())
@@ -115,50 +50,141 @@ class SurveyScraper(object):
                     self.log.debug(ioerr)
                 else:
                     try:
-                        document = json.load(stream)
+                        self.config = json.load(stream)
                     except ValueError, e:
                         self.log.warning(u'Failed to decode JSON document %s', path)
                         self.log.debug(u'Exception raised %s', unicode(e))
                     else:
-                        self.node = document
-                        for frame in self.node['frame']:
-                            frame['timestamp'] = datetime.strptime(frame['timecode'], "%Y-%m-%dT%H:%M:%S.%f")
-            else:
-                # in the event that the buffer index is missing
-                # recreate it by scanning the buffer directory
-                self.log.info(u'No index found, reindexing...')
-                self.node = { 'frame':[], }
-                for path in os.listdir(self.config['location']['buffer directory']):
-                    match = expression['file name']['pattern'].search(path)
-                    if match is not None:
-                        o = match.groupdict()
-                        iso = expression['file name']['iso format'].format(**o)
-                        record = {
-                            'timestamp':datetime.strptime(iso, "%Y-%m-%dT%H:%M:%S.%f"),
-                            'path':os.path.abspath(os.path.join(self.config['location']['buffer directory'],path)),
-                        }
-                        record['timecode'] = record['timestamp'].strftime("%Y-%m-%dT%H:%M:%S.%f")
-                        self.node['frame'].append(record)
-                self.log.info(u'Reindex found %d frames in buffer', len(self.node['frame']))
-                self.volatile = True
+                        # Start a scraper for each camera config
+                        self.camera = {}
+                        for k,v in self.config['camera'].iteritems():
+                            v['name'] = k
+                            self.camera[k] = CameraScraper(self, v)
+    
+    @property
+    def valid(self):
+        return self.config is not None
+    
+    
+    @property
+    def profile(self):
+        return self.config['profile'][self.env['profile']]
+    
+    
+    def load(self):
+        for camera in self.camera.values():
+            camera.load()
+    
+    
+    def unload(self):
+        for camera in self.camera.values():
+            camera.unload()
+    
+    
+    def commit(self):
+        for camera in self.camera.values():
+            camera.commit()
+    
+    
+    def purge(self):
+        for camera in self.camera.values():
+            camera.purge()
+    
+    
+    def pack(self):
+        for camera in self.camera.values():
+            camera.pack()
+    
+
+
+class CameraScraper(object):
+    def __init__(self, scraper, config):
+        self.log = logging.getLogger('camera')
+        self.scraper = scraper
+        self.config = config
+        self.node = None
+        self.volatile = False
+    
+    @property
+    def name(self):
+        self.config['name']
+    
+    
+    @property
+    def env(self):
+         return self.scraper.env
+    
+    
+    @property
+    def profile(self):
+         return self.scraper.profile
+    
+    
+    @property
+    def json(self):
+         return json.dumps(self.node, ensure_ascii=False, sort_keys=True, indent=4,  default=default_json_handler).encode('utf-8')
+    
+    
+    def load(self):
+        if self.config:
+            if 'database' in self.config['location']:
+                path = os.path.realpath(os.path.expanduser(os.path.expandvars(self.config['location']['database'])))
+                if os.path.exists(path):
+                    try:
+                        fnode = open(path, 'r')
+                        stream = StringIO(fnode.read())
+                        fnode.close()
+                    except IOError as ioerr:
+                        self.log.warning(u'Failed to load %s frame index file %s', self.name, path)
+                        self.log.debug(u'Exception raised %s', unicode(ioerr))
+                    else:
+                        try:
+                            self.node = json.load(stream)
+                        except ValueError, valerr:
+                            self.log.warning(u'Failed to decode %s JSON frame index %s', self.name, path)
+                            self.log.debug(u'Exception raised %s', unicode(valerr))
+                        else:
+                            for frame in self.node['frame']:
+                                frame['timestamp'] = datetime.strptime(frame['timecode'], "%Y-%m-%dT%H:%M:%S.%f")
+                else:
+                    # in the event that the buffer index is missing
+                    # recreate it by scanning the buffer directory
+                    self.log.info(u'No index found for %s, reindexing...', self.name)
+                    self.node = { 'frame':[], }
+                    for path in os.listdir(self.config['location']['buffer directory']):
+                        match = expression['file name']['pattern'].search(path)
+                        if match is not None:
+                            o = match.groupdict()
+                            iso = expression['file name']['iso format'].format(**o)
+                            record = {
+                                'timestamp':datetime.strptime(iso, "%Y-%m-%dT%H:%M:%S.%f"),
+                                'path':os.path.abspath(os.path.join(self.config['location']['buffer directory'],path)),
+                            }
+                            record['timecode'] = record['timestamp'].strftime("%Y-%m-%dT%H:%M:%S.%f")
+                            self.node['frame'].append(record)
+                    self.log.info(u'Reindexing %s found %d frames in buffer', self.name, len(self.node['frame']))
+                    self.volatile = True
+    
     
     def unload(self):
         if self.volatile:
             for frame in self.node['frame']:
                 del frame['timestamp']
                 
-            self.log.debug(u'Flushing buffer index with %d frames to %s', len(self.node['frame']), self.config['location']['json'])
+            path = os.path.realpath(os.path.expanduser(os.path.expandvars(self.config['location']['database'])))
             self.node['modified'] = datetime.now()
-            path = os.path.abspath(self.config['location']['json'])
+            self.log.debug(u'Flushing %s frame index with %d frames to %s', self.name, len(self.node['frame']), path)
             if self.varify_directory(os.path.dirname(path)):
                 try:
-                    fconf = open(path, 'w')
-                    fconf.write(self.json)
-                    fconf.close()
-                except IOError as error:
-                    self.log.error(str(error))
+                    fnode = open(path, 'w')
+                    fnode.write(self.json)
+                    fnode.close()
+                except IOError as ioerr:
+                    self.log.warning(u'Failed to write %s frame index %s', self.name, path)
+                    self.log.debug(u'Exception raised %s', unicode(ioerr))
                 else:
                     self.volatile = False
+    
     
     def commit(self):
         if os.path.isdir(self.config['location']['watch directory']):
@@ -177,7 +203,7 @@ class SurveyScraper(object):
                     batch.append(record)
                     
             if batch:
-                self.log.debug(u'Indexing %d new frames', len(batch))
+                self.log.debug(u'Indexing %d new frames for %s', len(batch), self.name)
                 for record in batch:
                     # move the frame to the target location
                     proc = Popen(['mv', record['source'], record['path']])
@@ -189,7 +215,7 @@ class SurveyScraper(object):
                     # add a reference of the frame to the index
                     self.node['frame'].append(record)
                     self.volatile = True
-                    
+    
     
     def purge(self):
         query = self.select()
@@ -201,16 +227,17 @@ class SurveyScraper(object):
             else:
                 query['batch'].append(frame)
                 
-        self.log.info('Removed all but %d frames in %s from %s to %s', len(query['batch']), str(query['duration']), query['begin'].isoformat(), query['end'].isoformat())
+        self.log.info('Removed all but %d frames in %s from %s to %s for %s', len(query['batch']), str(query['duration']), query['begin'].isoformat(), query['end'].isoformat(), self.name)
         self.node['frame'] = query['batch']
     
+    
     def select(self):
-        node = { 'now':datetime.now(), }
+        query = { 'now':datetime.now(), }
         if 'from timestamp' in self.env:
-            node['from timestamp'] = datetime.strptime(self.env['from timestamp'], "%Y-%m-%d %H:%M:%S")
+            query['from timestamp'] = datetime.strptime(self.env['from timestamp'], "%Y-%m-%d %H:%M:%S")
             
         if 'to timestamp' in self.env:
-            node['to timestamp'] = datetime.strptime(self.env['to timestamp'], "%Y-%m-%d %H:%M:%S")
+            query['to timestamp'] = datetime.strptime(self.env['to timestamp'], "%Y-%m-%d %H:%M:%S")
             
         if 'timestamp window' in self.env:
             match = expression['time delta']['pattern'].search(self.env['timestamp window'])
@@ -218,7 +245,7 @@ class SurveyScraper(object):
                 o = {}
                 for k,v in match.groupdict().iteritems():
                     if v: o[k] = int(v)
-                node['timestamp window'] = timedelta(**o)
+                query['timestamp window'] = timedelta(**o)
                 
         if 'timestamp offset' in self.env:
             match = expression['time delta']['pattern'].search(self.env['timestamp offset'])
@@ -226,13 +253,14 @@ class SurveyScraper(object):
                 o = {}
                 for k,v in match.groupdict().iteritems():
                     if v: o[k] = int(v)
-                node['timestamp offset'] = timedelta(**o)
+                query['timestamp offset'] = timedelta(**o)
                 
-        node['end'] = node['now'] - node['timestamp offset']
-        node['begin'] = node['end'] - node['timestamp window']
-        node['duration']  = node['end'] - node['begin']
-        node['name'] = '{}~{}'.format(node['begin'].strftime("%Y-%m-%d-%H-%M-%S"), node['end'].strftime("%Y-%m-%d-%H-%M-%S"))
-        return node
+        query['end'] = query['now'] - query['timestamp offset']
+        query['begin'] = query['end'] - query['timestamp window']
+        query['duration']  = query['end'] - query['begin']
+        query['name'] = '{}~{}'.format(query['begin'].strftime("%Y-%m-%d-%H-%M-%S"), query['end'].strftime("%Y-%m-%d-%H-%M-%S"))
+        return query
+    
     
     def pack(self):
         query = self.select()
@@ -241,7 +269,7 @@ class SurveyScraper(object):
             if frame['timestamp'] > query['begin'] and frame['timestamp'] < query['end']:
                 query['batch'].append(frame)
         if batch:
-            self.log.info('Selecting %d frames in %s from %s to %s', len(query['batch']), str(query['duration']), query['begin'].isoformat(), query['end'].isoformat())
+            self.log.info('Pack %d frames in %s from %s to %s for %s', len(query['batch']), str(query['duration']), query['begin'].isoformat(), query['end'].isoformat(), self.name)
             
             # sort the frames in the batch by timestamp
             query['batch'] = sorted(query['batch'], key=lambda frame: frame['timestamp'])
@@ -263,7 +291,7 @@ class SurveyScraper(object):
                     
                 # pack jpgs into a stream
                 uncompressed = '{0}/{1}.mkv'.format(query['temp'], 'video')
-                self.log.debug('pack uncompressed sequence to %s', uncompressed)
+                self.log.debug('Pack uncompressed sequence for %s to %s', self.name, uncompressed)
                 command = [
                     'ffmpeg', 
                     '-r', str(self.profile['pack']['frame per second']), 
@@ -277,8 +305,8 @@ class SurveyScraper(object):
                 # run handbrake to compress the stream
                 if self.varify_directory(self.config['location']['product directory']):
                     product = '{0}/{1}.m4v'.format(self.config['location']['product directory'], query['name'])
-                    self.log.debug('Compress video to %s', product)
-                    command = [ HANDBRAKE ]
+                    self.log.debug('Compress video for %s to %s', self.name, product)
+                    command = [ 'HandBrakeCLI' ]
                     for k,v in self.profile['transcode'].iteritems():
                         if k: command.append(k)
                         if v: command.append(v)
@@ -290,8 +318,9 @@ class SurveyScraper(object):
                     proc.communicate()
                 
                 # clean up
-                self.log.debug('Deleting temp directory %s', query['temp'])
+                self.log.debug('Delete temp directory %s for %s', query['temp'], self.name)
                 self.purge_directory(query['temp'])
+    
     
     def varify_directory(self, path):
         result = True
@@ -303,6 +332,7 @@ class SurveyScraper(object):
             self.log.error(unicode(err))
             result = False
         return result
+    
     
     def purge_directory(self, path):
         if os.path.isdir(path):
@@ -327,12 +357,14 @@ def default_json_handler(o):
         
     return result
 
+
 def decode_cli():
     
     # Global arguments for all commands
     p = ArgumentParser()
-    p.add_argument('-v', '--verbosity',             dest='verbosity',   metavar='LEVEL', choices=log_levels.keys(), default='info', help='logging verbosity level [default: %(default)s]')
-    p.add_argument('--version',                     action='version', version='%(prog)s 0.1')
+    p.add_argument('-v', '--verbosity', dest='verbosity',   metavar='LEVEL', choices=log_levels.keys(), default='info', help='logging verbosity level [default: %(default)s]')
+    p.add_argument('-c', '--conf',      dest='conf',    default='/etc/stillvid/stillvid.json', help='Path to configuration file [default: %(default)s]')
+    p.add_argument('--version',         action='version', version='%(prog)s 0.1')
     
     # A different parser for every action
     s = p.add_subparsers(dest='action')
@@ -350,7 +382,7 @@ def decode_cli():
     c['purge'].add_argument('-B', '--backward',    metavar='DURATION', default='0s',   dest='timestamp offset', help='Window offset backward in seconds[default: %(default)s]')
     
     c['pack'] = s.add_parser( 'pack',
-        help='Pack jpeg frames to stream.',
+        help='Pack jpeg frames to stream',
         description='TIMESTAMP is given as YYYY-MM-DD HH:MM:SS, DURATION is given as {H}h{M}m{S}s or any subset, i.e. 4h34m'
     )
     c['pack'].add_argument('-p', '--profile', dest='profile', default='default',        help='Video encoder profile [default: %(default)s]')
@@ -365,26 +397,27 @@ def decode_cli():
     return o
     
 
+
 def main():
     logging.basicConfig()
     logging.getLogger().setLevel(logging.DEBUG)
     
     env = decode_cli()
     logging.getLogger().setLevel(log_levels[env['verbosity']])
-    
-    scraper = SurveyScraper(env, config['camera']['nixon'])
-    scraper.load()
-    
-    if env['action'] == 'commit':
-        scraper.commit()
+    scraper = StillVidScraper(env)
+    if scraper.valid:
+        scraper.load()
         
-    if env['action'] == 'purge':
-        scraper.purge()
+        if env['action'] == 'commit':
+            scraper.commit()
         
-    if env['action'] == 'pack':
-        scraper.pack()
+        if env['action'] == 'purge':
+            scraper.purge()
         
-    scraper.unload()
+        if env['action'] == 'pack':
+            scraper.pack()
+        
+        scraper.unload()
 
 
 if __name__ == '__main__':
