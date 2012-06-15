@@ -239,28 +239,35 @@ class CameraScraper(object):
         query = { 'now':datetime.now(), }
         if 'from timestamp' in self.env:
             query['from timestamp'] = datetime.strptime(self.env['from timestamp'], "%Y-%m-%d %H:%M:%S")
-            
         if 'to timestamp' in self.env:
             query['to timestamp'] = datetime.strptime(self.env['to timestamp'], "%Y-%m-%d %H:%M:%S")
             
-        if 'timestamp window' in self.env:
-            match = expression['time delta']['pattern'].search(self.env['timestamp window'])
-            if match is not None:
-                o = {}
-                for k,v in match.groupdict().iteritems():
-                    if v: o[k] = int(v)
-                query['timestamp window'] = timedelta(**o)
-                
-        if 'timestamp offset' in self.env:
-            match = expression['time delta']['pattern'].search(self.env['timestamp offset'])
-            if match is not None:
-                o = {}
-                for k,v in match.groupdict().iteritems():
-                    if v: o[k] = int(v)
-                query['timestamp offset'] = timedelta(**o)
-                
-        query['end'] = query['now'] - query['timestamp offset']
-        query['begin'] = query['end'] - query['timestamp window']
+        if query['from timestamp'] and query['to timestamp']:
+            query['begin'] = query['from timestamp']
+            query['end'] = query['to timestamp']
+        else:
+            if 'timestamp window' in self.env:
+                match = expression['time delta']['pattern'].search(self.env['timestamp window'])
+                if match is not None:
+                    o = {}
+                    for k,v in match.groupdict().iteritems():
+                        if v: o[k] = int(v)
+                    query['timestamp window'] = timedelta(**o)
+                    
+            if 'timestamp offset' in self.env:
+                match = expression['time delta']['pattern'].search(self.env['timestamp offset'])
+                if match is not None:
+                    o = {}
+                    for k,v in match.groupdict().iteritems():
+                        if v: o[k] = int(v)
+                    query['timestamp offset'] = timedelta(**o)
+                    
+            query['end'] = query['now'] - query['timestamp offset']
+            query['begin'] = query['end'] - query['timestamp window']
+        
+        
+        
+        
         query['duration']  = query['end'] - query['begin']
         query['name'] = '{}~{}'.format(query['begin'].strftime("%Y-%m-%d-%H-%M-%S"), query['end'].strftime("%Y-%m-%d-%H-%M-%S"))
         return query
