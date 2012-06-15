@@ -33,9 +33,10 @@
             },
             "transcode":{
                 "--loose-anamorphic":null,
-                "--quality":"18",
+                "--quality":"20",
                 "--encoder":"x264",
-                "--encopts":"mixed-refs=1:ref=3:bframes=3:me=umh:b-adapt=2:trellis=0:b-pyramid=none:subme=9:vbv-maxrate=5500:vbv-bufsize=5500:cabac=1"
+                "--x264-profile":"main",
+                "--encopts":"me=umh:subme=7:cabac=1"
             }
         }
     },
