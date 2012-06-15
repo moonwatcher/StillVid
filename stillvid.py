@@ -242,7 +242,7 @@ class CameraScraper(object):
         if 'to timestamp' in self.env:
             query['to timestamp'] = datetime.strptime(self.env['to timestamp'], "%Y-%m-%d %H:%M:%S")
             
-        if query['from timestamp'] and query['to timestamp']:
+        if 'from timestamp' in query and 'to timestamp' in query:
             query['begin'] = query['from timestamp']
             query['end'] = query['to timestamp']
         else:
@@ -292,11 +292,7 @@ class CameraScraper(object):
                 i = 1
                 pad = int(math.ceil(math.log(len(query['batch']), 10)))
                 for frame in query['batch']:
-                    command = [
-                        'cp',
-                        frame['path'],
-                        os.path.join(query['temp'], 'frame{:0{}d}.jpg'.format(i, pad))
-                    ]
+                    command = [ 'ln', '-s', frame['path'], os.path.join(query['temp'], 'frame{:0{}d}.jpg'.format(i, pad)) ]
                     proc = Popen(command)
                     proc.communicate()
                     i += 1
