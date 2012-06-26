@@ -193,6 +193,8 @@ class CameraScraper(object):
     def commit(self):
         if os.path.isdir(self.config['location']['watch directory']):
             batch = []
+            first = None
+            last = None
             for path in os.listdir(self.config['location']['watch directory']):
                 match = expression['file name']['pattern'].search(path)
                 if match is not None:
@@ -204,10 +206,17 @@ class CameraScraper(object):
                         'source':os.path.abspath(os.path.join(self.config['location']['watch directory'],path)),
                     }
                     record['timecode'] = record['timestamp'].strftime("%Y-%m-%dT%H:%M:%S.%f")
+                    
+                    # Optionally update first and last frame
+                    if first is None or first > record['timecode']:
+                        first = record['timecode']
+                    if last is None or last < record['timecode']:
+                        last = record['timecode']
+                        
                     batch.append(record)
                     
             if batch:
-                self.log.debug(u'Indexing %d new frames for %s', len(batch), self.name)
+                self.log.info(u'Indexing %d new frames for %s in %s from $s to $s', len(batch), self.name,  unicode(last - first), unicode(first), unicode(last))
                 for record in batch:
                     # move the frame to the target location
                     proc = Popen(['mv', record['source'], record['path']])
@@ -226,7 +235,7 @@ class CameraScraper(object):
         query['batch'] = []
         for frame in self.node['frame']:
             if frame['timestamp'] < query['begin'] or frame['timestamp'] > query['end']:
-                #if os.path.isfile(frame['path']): os.remove(frame['path'])
+                if os.path.isfile(frame['path']): os.remove(frame['path'])
                 self.volatile = True
             else:
                 query['batch'].append(frame)
@@ -388,7 +397,7 @@ def decode_cli():
     )
     c['purge'].add_argument('-t', '--from',        metavar='TIMESTAMP', dest='from timestamp',       help='Start timestamp')
     c['purge'].add_argument('-T', '--to',          metavar='TIMESTAMP', dest='to timestamp',         help='End timestamp')
-    c['purge'].add_argument('-L', '--length',      metavar='DURATION', default='180m',   dest='timestamp window', help='Max window size in seconds [default: %(default)s]')
+    c['purge'].add_argument('-L', '--length',      metavar='DURATION', default='48h',   dest='timestamp window', help='Max window size in seconds [default: %(default)s]')
     c['purge'].add_argument('-B', '--backward',    metavar='DURATION', default='0s',   dest='timestamp offset', help='Window offset backward in seconds[default: %(default)s]')
     
     c['pack'] = s.add_parser( 'pack',
@@ -398,7 +407,7 @@ def decode_cli():
     c['pack'].add_argument('-p', '--profile', dest='profile', default='high',        help='Video encoder profile [default: %(default)s]')
     c['pack'].add_argument('-t', '--from',        metavar='TIMESTAMP', dest='from timestamp',       help='Start timestamp')
     c['pack'].add_argument('-T', '--to',          metavar='TIMESTAMP', dest='to timestamp',         help='End timestamp')
-    c['pack'].add_argument('-L', '--length',      metavar='DURATION', default='180m',   dest='timestamp window', help='Max window size in seconds [default: %(default)s]')
+    c['pack'].add_argument('-L', '--length',      metavar='DURATION', default='60m',   dest='timestamp window', help='Max window size in seconds [default: %(default)s]')
     c['pack'].add_argument('-B', '--backward',    metavar='DURATION', default='0s',   dest='timestamp offset', help='Window offset backward in seconds[default: %(default)s]')
     
     o = {}
