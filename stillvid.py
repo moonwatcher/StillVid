@@ -216,7 +216,7 @@ class CameraScraper(object):
                     batch.append(record)
                     
             if batch:
-                self.log.info(u'Indexing %d new for %s frames ranging %s from %s to %s', len(batch), self.name,  unicode(last - first), unicode(first), unicode(last))
+                self.log.info(u'Indexing %d new for %s frames ranging %s from %s to %s', len(batch), self.name,  str(last - first), first.isoformat(), last.isoformat())
                 for record in batch:
                     # move the frame to the target location
                     proc = Popen(['mv', record['source'], record['path']])
@@ -234,8 +234,16 @@ class CameraScraper(object):
         before = len(self.node['frame'])
         
         query = self.select()
+        query['first'] = None
+        query['last'] = None
         query['batch'] = []
         for frame in self.node['frame']:
+            # Optionally update first and last frame
+            if query['first'] is None or query['first'] > frame['timestamp']:
+                query['first'] = frame['timestamp']
+            if query['last'] is None or query['first'] < frame['timestamp']:
+                query['first'] = frame['timestamp']
+                        
             if frame['timestamp'] < query['begin'] or frame['timestamp'] > query['end']:
                 if os.path.isfile(frame['path']): os.remove(frame['path'])
                 self.volatile = True
@@ -243,14 +251,19 @@ class CameraScraper(object):
                 query['batch'].append(frame)
                 
         self.node['frame'] = query['batch']
-        
         after = len(self.node['frame'])
         
-        self.log.info(u'Cleaning %s: %d of %d frames removed, %d remain, ranging %s from %s to %s', self.name, before - after, before, after, str(query['duration']), query['begin'].isoformat(), query['end'].isoformat())
+        if after:
+            query['real duration'] = query['last'] - query['first']
+            self.log.info(u'Cleaning %s: %d of %d frames removed, %d remain, ranging %s from %s to %s', self.name, before - after, before, after, str(query['real duration']), query['first'].isoformat(), query['last'].isoformat())
+        else:
+            self.log.info(u'Cleaning %s: %d of %d frames removed, %d remain', self.name, before - after, before, after)
+        
     
     
     def select(self):
         query = { 'now':datetime.now(), }
+
         if 'from timestamp' in self.env:
             query['from timestamp'] = datetime.strptime(self.env['from timestamp'], "%Y-%m-%d %H:%M:%S")
         if 'to timestamp' in self.env:
@@ -289,8 +302,16 @@ class CameraScraper(object):
     
     def pack(self):
         query = self.select()
+        query['first'] = None
+        query['last'] = None
         query['batch'] = []
         for frame in self.node['frame']:
+            # Optionally update first and last frame
+            if query['first'] is None or query['first'] > frame['timestamp']:
+                query['first'] = frame['timestamp']
+            if query['last'] is None or query['first'] < frame['timestamp']:
+                query['first'] = frame['timestamp']
+                
             if frame['timestamp'] > query['begin'] and frame['timestamp'] < query['end']:
                 query['batch'].append(frame)
                 
