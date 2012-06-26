@@ -208,10 +208,10 @@ class CameraScraper(object):
                     record['timecode'] = record['timestamp'].strftime("%Y-%m-%dT%H:%M:%S.%f")
                     
                     # Optionally update first and last frame
-                    if first is None or first > record['timecode']:
-                        first = record['timecode']
-                    if last is None or last < record['timecode']:
-                        last = record['timecode']
+                    if first is None or first > record['timestamp']:
+                        first = record['timestamp']
+                    if last is None or last < record['timestamp']:
+                        last = record['timestamp']
                         
                     batch.append(record)
                     
