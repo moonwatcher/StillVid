@@ -241,8 +241,8 @@ class CameraScraper(object):
             # Optionally update first and last frame
             if query['first'] is None or query['first'] > frame['timestamp']:
                 query['first'] = frame['timestamp']
-            if query['last'] is None or query['first'] < frame['timestamp']:
-                query['first'] = frame['timestamp']
+            if query['last'] is None or query['last'] < frame['timestamp']:
+                query['last'] = frame['timestamp']
                         
             if frame['timestamp'] < query['begin'] or frame['timestamp'] > query['end']:
                 if os.path.isfile(frame['path']): os.remove(frame['path'])
@@ -309,14 +309,15 @@ class CameraScraper(object):
             # Optionally update first and last frame
             if query['first'] is None or query['first'] > frame['timestamp']:
                 query['first'] = frame['timestamp']
-            if query['last'] is None or query['first'] < frame['timestamp']:
-                query['first'] = frame['timestamp']
+            if query['last'] is None or query['last'] < frame['timestamp']:
+                query['last'] = frame['timestamp']
                 
             if frame['timestamp'] > query['begin'] and frame['timestamp'] < query['end']:
                 query['batch'].append(frame)
                 
         if query['batch']:
-            self.log.info('Pack %d frames in %s from %s to %s for %s', len(query['batch']), str(query['duration']), query['begin'].isoformat(), query['end'].isoformat(), self.name)
+            query['real duration'] = query['last'] - query['first']
+            self.log.info('Pack %d frames in %s from %s to %s for %s', len(query['batch']), str(query['real duration']), query['first'].isoformat(), query['last'].isoformat(), self.name)
             
             # sort the frames in the batch by timestamp
             query['batch'] = sorted(query['batch'], key=lambda frame: frame['timestamp'])
