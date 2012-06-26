@@ -231,6 +231,8 @@ class CameraScraper(object):
     
     
     def purge(self):
+        before = len(self.node['frame'])
+        
         query = self.select()
         query['batch'] = []
         for frame in self.node['frame']:
@@ -240,8 +242,11 @@ class CameraScraper(object):
             else:
                 query['batch'].append(frame)
                 
-        self.log.info('Removed all but %d frames in %s from %s to %s for %s', len(query['batch']), str(query['duration']), query['begin'].isoformat(), query['end'].isoformat(), self.name)
         self.node['frame'] = query['batch']
+        
+        after = len(self.node['frame'])
+        
+        self.log.info(u'Cleaning %s: %d of %d frames removed, %d remain, ranging %s from %s to %s', self.name, before - after, before, after, str(query['duration']), query['begin'].isoformat(), query['end'].isoformat())
     
     
     def select(self):
@@ -332,7 +337,7 @@ class CameraScraper(object):
                     command.append(uncompressed)
                     command.append('--output')
                     command.append(product)
-                    proc = Popen(command)
+                    proc = Popen(command, stderr=PIPE, stdout=PIPE)
                     proc.communicate()
                 
                 # clean up
