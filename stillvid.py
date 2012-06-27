@@ -216,7 +216,7 @@ class CameraScraper(object):
                     batch.append(record)
                     
             if batch:
-                self.log.info(u'Indexing %d new for %s frames ranging %s from %s to %s', len(batch), self.name,  str(last - first), first.isoformat(), last.isoformat())
+                self.log.info(u'Indexing %s: %d new frames, ranging %s from %s to %s', self.name, len(batch),  str(last - first), first.isoformat(), last.isoformat())
                 for record in batch:
                     # move the frame to the target location
                     proc = Popen(['mv', record['source'], record['path']])
