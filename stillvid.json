@@ -23,7 +23,7 @@
                 "--loose-anamorphic":null,
                 "--quality":"22",
                 "--encoder":"x264",
-		"--x264-profile":"main",
+                "--x264-profile":"main",
                 "--encopts":"me=umh:subme=7:cabac=1",
                 "--maxWidth":"480"
             }

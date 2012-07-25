@@ -297,6 +297,8 @@ class CameraScraper(object):
         
         query['duration']  = query['end'] - query['begin']
         query['name'] = '{}~{}'.format(query['begin'].strftime("%Y-%m-%d-%H-%M-%S"), query['end'].strftime("%Y-%m-%d-%H-%M-%S"))
+        self.log.debug(u'Time frame select query is: %s', unicode(query))
+        
         return query
     
     
